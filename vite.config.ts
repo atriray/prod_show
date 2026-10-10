@@ -17,6 +17,8 @@ export default defineConfig({
     viteSingleFile({ useRecommendedBuildConfig: false }),
   ],
   build: {
+    // 编译输出到 docs 目录（便于 GitHub Pages 直接以 docs 目录发布）
+    outDir: 'docs',
     cssCodeSplit: false,
     rollupOptions: {
       output: {
