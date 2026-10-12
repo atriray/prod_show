@@ -3,11 +3,12 @@ name: Build and Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # 添加这行，启用手动触发
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 锁定 Ubuntu 版本
+
     permissions:
       contents: read
       pages: write
@@ -15,23 +16,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5  # 升级到 v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6  # 升级到 v6
         with:
           python-version: "3.11"
 
       - name: Install boto3
         run: pip install boto3
 
-      # 如果你的网站需要先构建（如 npm run build），在这里执行构建步骤
       - name: Build site
         run: |
-          # 例如：npm install && npm run build
-          # 确保构建输出在 dist 目录
+          # 你的构建命令，例如 npm run build
           mkdir -p dist
-          # 这里放入你的实际构建命令
 
       - name: Inject Presigned URLs
         env:
