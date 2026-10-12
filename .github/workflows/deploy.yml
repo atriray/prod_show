@@ -1,0 +1,50 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install boto3
+        run: pip install boto3
+
+      # 如果你的网站需要先构建（如 npm run build），在这里执行构建步骤
+      - name: Build site
+        run: |
+          # 例如：npm install && npm run build
+          # 确保构建输出在 dist 目录
+          mkdir -p dist
+          # 这里放入你的实际构建命令
+
+      - name: Inject Presigned URLs
+        env:
+          BITIFUL_ACCESS_KEY: ${{ secrets.BITIFUL_ACCESS_KEY }}
+          BITIFUL_SECRET_KEY: ${{ secrets.BITIFUL_SECRET_KEY }}
+        run: python scripts/inject_presigned_urls.py
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "./dist"
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
