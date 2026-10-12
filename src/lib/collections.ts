@@ -76,15 +76,18 @@ function toNode(dir: Dir): FolderNode {
   }
 }
 
-/** 由媒体文件相对路径列表构建作品集树（路径形如 "作品集/子文件夹/文件.jpg"） */
-function buildCollections(
-  paths: readonly string[],
-  resolveUrl: (path: string) => string,
-): Collection[] {
+/** 清单条目：path 用于树结构与类型推断（始终带原始文件名与扩展名）；url 为实际加载地址（相对路径或云盘直链） */
+interface MediaItem {
+  path: string
+  url: string
+}
+
+/** 由媒体条目构建作品集树（path 形如 "作品集/子文件夹/文件.jpg"） */
+function buildCollections(items: readonly MediaItem[]): Collection[] {
   const rootDirs = new Map<string, Dir>()
 
-  for (const rawPath of paths) {
-    const segments = rawPath.replace(/^\//, '').split('/')
+  for (const item of items) {
+    const segments = item.path.replace(/^\//, '').split('/')
     // 根目录下的散落文件不属于任何作品集，忽略
     if (segments.length < 2) continue
     const topName = segments[0]
@@ -109,7 +112,7 @@ function buildCollections(
     }
     current.files.push({
       name: fileName,
-      url: resolveUrl(rawPath.replace(/^\//, '')),
+      url: item.url,
       type: IMAGE_EXTS.has(ext) ? 'image' : 'video',
     })
   }
@@ -119,11 +122,13 @@ function buildCollections(
     .sort((a, b) => naturalCompare(a.name, b.name))
 }
 
-/** 编译期内嵌的媒体文件（glob 静态分析），路径剥去 /prod/ 前缀 */
-const bundledPaths = Object.keys(mediaModules).map((p) => p.replace(/^\/prod\//, ''))
-// 回退模式与清单模式使用同一套相对 URL（scan-prod.mjs 会把 prod/ 复制到 dist/prod/），
-// 避免 Vite 哈希资源 URL 在单文件内联/子路径部署/file:// 场景下失效
-const bundledCollections = buildCollections(bundledPaths, (path) => `prod/${path}`)
+/** 编译期内嵌的媒体文件（glob 静态分析），路径剥去 /prod/ 前缀。
+ * 回退模式与清单模式使用同一套相对 URL（scan-prod.mjs 会把 prod/ 复制到 docs/prod/），
+ * 避免 Vite 哈希资源 URL 在单文件内联/子路径部署/file:// 场景下失效 */
+const bundledItems: MediaItem[] = Object.keys(mediaModules)
+  .map((p) => p.replace(/^\/prod\//, ''))
+  .map((path) => ({ path, url: `prod/${path}` }))
+const bundledCollections = buildCollections(bundledItems)
 
 // 注意：使用可变的模块级导出（ESM 活绑定），
 // initCollections() 在应用挂载前完成重赋值，组件读取到的是最终数据。
@@ -131,15 +136,41 @@ export let collections: Collection[] = bundledCollections
 
 export let totalWorks = collections.reduce((sum, c) => sum + c.fileCount, 0)
 
+function applyManifest(list: unknown[]): void {
+  const items: MediaItem[] = []
+  for (const entry of list) {
+    if (typeof entry === 'string') {
+      items.push({ path: entry, url: `prod/${entry}` })
+    } else if (entry && typeof entry === 'object') {
+      const o = entry as { path?: unknown; url?: unknown }
+      if (typeof o.path === 'string' && typeof o.url === 'string' && o.url !== '') {
+        items.push({ path: o.path, url: o.url })
+      }
+    }
+  }
+  collections = buildCollections(items)
+  totalWorks = collections.reduce((sum, c) => sum + c.fileCount, 0)
+}
+
 /**
  * 应用启动时初始化作品集数据：
  * - 开发环境：直接使用编译期 glob 扫描结果（增删文件自动刷新）
- * - 生产环境：优先加载站点根的 prod-manifest.json（清单模式，
- *   使部署后的静态页面使用「文件所在目录下的 prod 目录」作为作品集），
- *   清单不存在或加载失败时回退到内嵌数据
+ * - 生产环境：按优先级加载作品集清单
+ *   1. 构建时内嵌进 index.html 的 window.__PROD_MANIFEST__
+ *      （link-123pan.mjs 写入，file:// 双击打开时 fetch 不可用，内嵌是唯一途径）
+ *   2. 站点根的 prod-manifest.json（fetch，支持手工部署时只更新清单）
+ *   3. 回退：编译期内嵌数据
+ *   清单条目支持字符串（相对路径 → 从 docs/prod/ 加载）
+ *   或对象 { path, url }（url 为完整直链如 123 云盘）
  */
 export async function initCollections(): Promise<void> {
   if (import.meta.env.DEV) return
+
+  const embedded = (globalThis as { __PROD_MANIFEST__?: unknown }).__PROD_MANIFEST__
+  if (Array.isArray(embedded) && embedded.length > 0) {
+    applyManifest(embedded)
+    return
+  }
 
   try {
     const res = await fetch('prod-manifest.json', { cache: 'no-store' })
@@ -147,9 +178,7 @@ export async function initCollections(): Promise<void> {
     const data: unknown = await res.json()
     const list = Array.isArray(data) ? data : (data as { files?: unknown } | null)?.files
     if (!Array.isArray(list)) return
-    const paths = list.filter((s): s is string => typeof s === 'string')
-    collections = buildCollections(paths, (path) => `prod/${path}`)
-    totalWorks = collections.reduce((sum, c) => sum + c.fileCount, 0)
+    applyManifest(list)
   } catch {
     // 无清单（例如直接双击打开 index.html）时继续使用编译期内嵌数据
   }
