@@ -6,7 +6,7 @@ import sys
 # 从环境变量读取密钥（由 GitHub Actions 注入）
 ACCESS_KEY = os.environ["BITIFUL_ACCESS_KEY"]
 SECRET_KEY = os.environ["BITIFUL_SECRET_KEY"]
-BUCKET = "你的桶名"
+BUCKET = "prod-show"
 # 预签名 URL 有效期（秒），最长 7 天（604800 秒）
 EXPIRES_IN = 604800
 
