@@ -17,6 +17,7 @@ import AppSidebar from './components/AppSidebar.vue'
   z-index: 1;
   display: flex;
   min-height: 100vh;
+  user-select: none;
 }
 
 .app-main {
